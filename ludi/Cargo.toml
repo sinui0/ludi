@@ -1,0 +1,19 @@
+[package]
+name = "ludi"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["macros"]
+macros = ["dep:ludi-macros"]
+
+[dependencies]
+ludi-core = { path = "../ludi-core" }
+ludi-macros = { path = "../ludi-macros", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "simple"
+required-features = ["macros"]
