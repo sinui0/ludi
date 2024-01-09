@@ -7,10 +7,11 @@ use syn::{parse_quote, spanned::Spanned};
 use crate::{
     items::method::Method,
     options::{CtrlOptions, MsgOptions, WrapOptions},
-    utils::ctrl_ident,
+    utils::{ctrl_ident, is_ludi_attr},
 };
 
 pub(crate) struct ItemImpl {
+    attrs: Vec<syn::Attribute>,
     msg_options: Option<MsgOptions>,
     ctrl_options: Option<CtrlOptions>,
     impl_trait: Option<ImplTrait>,
@@ -32,7 +33,9 @@ impl ItemImpl {
         mut msg_options: Option<MsgOptions>,
         mut ctrl_options: Option<CtrlOptions>,
     ) -> Self {
-        let item_msg_options = MsgOptions::maybe_from_attributes(&item.attrs);
+        let mut attrs = item.attrs.clone();
+
+        let item_msg_options = MsgOptions::maybe_from_attributes(&attrs);
         if let Some(item_msg_options) = item_msg_options {
             if let Some(msg_options) = msg_options.as_mut() {
                 msg_options.merge(&item_msg_options);
@@ -41,7 +44,7 @@ impl ItemImpl {
             }
         }
 
-        let item_ctrl_options = CtrlOptions::maybe_from_attributes(&item.attrs);
+        let item_ctrl_options = CtrlOptions::maybe_from_attributes(&attrs);
         if let Some(item_ctrl_options) = item_ctrl_options {
             if let Some(ctrl_options) = ctrl_options.as_mut() {
                 ctrl_options.merge(&item_ctrl_options);
@@ -49,6 +52,8 @@ impl ItemImpl {
                 ctrl_options = Some(item_ctrl_options);
             }
         }
+
+        attrs.retain(|attr| !is_ludi_attr(attr));
 
         let syn::Type::Path(syn::TypePath {
             path: actor_path, ..
@@ -122,6 +127,7 @@ impl ItemImpl {
             .collect::<Vec<_>>();
 
         Self {
+            attrs,
             msg_options,
             ctrl_options,
             impl_trait,
@@ -157,10 +163,21 @@ impl ItemImpl {
             .unwrap_or_default();
 
         let wrap_ident = name.clone().unwrap_or_else(|| {
-            syn::Ident::new(
-                &format!("{}Msg", self.actor_ident.to_string()),
-                Span::call_site(),
-            )
+            if let Some(impl_trait) = &self.impl_trait {
+                syn::Ident::new(
+                    &format!(
+                        "{}{}Msg",
+                        self.actor_ident.to_string(),
+                        impl_trait.trait_ident.to_string()
+                    ),
+                    Span::call_site(),
+                )
+            } else {
+                syn::Ident::new(
+                    &format!("{}Msg", self.actor_ident.to_string()),
+                    Span::call_site(),
+                )
+            }
         });
 
         let mut wrap_type_params = IdentSet::default();
@@ -198,6 +215,7 @@ impl ItemImpl {
 
     fn expand_ctrl(&self) -> TokenStream {
         let Self {
+            attrs,
             ctrl_options,
             actor_path,
             ..
@@ -249,6 +267,7 @@ impl ItemImpl {
             let methods = self.methods.iter().map(|method| method.expand_ctrl(true));
             let (impl_generics, _, where_clause) = generics.split_for_impl();
             quote!(
+                #(#attrs)*
                 impl #impl_generics #trait_path for #ctrl_path #where_clause {
                     #(#methods)*
                 }
@@ -266,6 +285,7 @@ impl ItemImpl {
                 let (impl_generics, _, where_clause) = generics.split_for_impl();
 
                 quote!(
+                    #(#attrs)*
                     impl #impl_generics #ctrl_path #where_clause {
                         #impl_method
                     }
@@ -281,7 +301,13 @@ impl ItemImpl {
     pub(crate) fn expand(&self) -> TokenStream {
         let mut tokens = TokenStream::new();
 
-        if self.impl_trait.is_none() {
+        if self.impl_trait.is_none()
+            || self
+                .msg_options
+                .as_ref()
+                .map(|opts| opts.foreign.is_present())
+                .unwrap_or(false)
+        {
             tokens.extend(self.expand_messages());
             tokens.extend(self.expand_wrap());
         }

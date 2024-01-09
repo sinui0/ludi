@@ -20,6 +20,8 @@ pub(crate) struct MsgOptions {
     pub(crate) skip: Flag,
     /// Skip message handler
     pub(crate) skip_handler: Flag,
+    /// Generate messages for a foreign trait
+    pub(crate) foreign: Flag,
 }
 
 impl MsgOptions {
@@ -54,6 +56,7 @@ impl MsgOptions {
 
         self.skip = other.skip.clone();
         self.skip_handler = other.skip_handler.clone();
+        self.foreign = other.foreign.clone();
     }
 
     pub(crate) fn maybe_from_attributes(attrs: &[syn::Attribute]) -> Option<Self> {
