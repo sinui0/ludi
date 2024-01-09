@@ -3,8 +3,11 @@ name = "ludi-core"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-futures = { version = "0.3" }
+[features]
+default = ["futures-mailbox"]
+futures-mailbox = []
 
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+[dependencies]
+futures-core = { version = "0.3" }
+futures-util = { version = "0.3", features = ["sink"] }
+futures-channel = { version = "0.3", features = ["sink"] }

@@ -1,53 +1,56 @@
-use std::marker::PhantomData;
+use futures_channel::oneshot::{channel, Receiver, Sender};
 
-use futures::channel::oneshot::{self, Receiver, Sender};
+use crate::{Actor, Context, Dispatch, Message};
 
-use crate::{Actor, Context, Mailbox, Message};
-
-pub type ActorEnvelope<A> =
-    Envelope<<A as Actor>::Message, <<A as Actor>::Message as Message<A>>::Return, A>;
-
-pub struct Envelope<M, R, A> {
+/// An envelope containing a message and optionally a channel which can be
+/// used to return a value back to the sender.
+pub struct Envelope<M, R> {
     msg: M,
     send: Option<Sender<R>>,
-    _pd: PhantomData<A>,
 }
 
-impl<M, R, A> Envelope<M, R, A> {
+impl<M, R> Envelope<M, R> {
+    /// Create a new envelope.
     pub fn new(msg: M) -> Self {
-        Self {
-            msg,
-            send: None,
-            _pd: PhantomData,
-        }
+        Self { msg, send: None }
     }
 
+    /// Create a new envelope with a channel which can be used to return
+    /// a response to the sender.
     pub fn new_returning(msg: M) -> (Self, Receiver<R>) {
-        let (send, recv) = oneshot::channel();
+        let (send, recv) = channel();
         (
             Self {
                 msg,
                 send: Some(send),
-                _pd: PhantomData,
             },
             recv,
         )
     }
 }
 
-impl<M, R, A> Envelope<M, R, A>
+impl<M, R> Envelope<M, R>
 where
-    A: Actor,
-    M: Message<A, Return = R> + Send + 'static,
-    R: Send + 'static,
+    M: Message<Return = R>,
+    R: Send,
 {
-    pub async fn handle<T: Mailbox<A>>(mut self, actor: &mut A, ctx: &mut Context<'_, A, T>) {
+    /// Dispatches the message and return channel to the actor for handling.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - The actor which will handle the message.
+    /// * `ctx` - The context of the actor.
+    pub async fn dispatch<A>(mut self, actor: &mut A, ctx: &mut Context<A>)
+    where
+        A: Actor,
+        M: Dispatch<A>,
+    {
         self.msg
-            .handle(actor, ctx, move |ret| {
+            .dispatch(actor, ctx, move |ret| {
                 if let Some(send) = self.send.take() {
                     let _ = send.send(ret);
                 }
             })
-            .await;
+            .await
     }
 }

@@ -1,0 +1,34 @@
+[package]
+name = "ludi-macros-test"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+ludi = { path = "../ludi" }
+
+[dev-dependencies]
+ludi-macros = { path = "../ludi-macros" }
+
+[[test]]
+name = "message_struct"
+path = "tests/message_struct.rs"
+
+[[test]]
+name = "message_struct_unit"
+path = "tests/message_struct_unit.rs"
+
+[[test]]
+name = "message_enum"
+path = "tests/message_enum.rs"
+
+[[test]]
+name = "interface_basic"
+path = "tests/interface_basic.rs"
+
+[[test]]
+name = "implement_basic"
+path = "tests/implement_basic.rs"
+
+[[test]]
+name = "implement_trait"
+path = "tests/implement_trait.rs"

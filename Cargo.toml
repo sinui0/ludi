@@ -1,2 +1,2 @@
 [workspace]
-members = ["ludi-core", "ludi-macros", "ludi"]
+members = ["ludi-core", "ludi-macros", "ludi", "ludi-macros-test"]

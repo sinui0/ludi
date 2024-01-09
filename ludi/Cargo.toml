@@ -4,16 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["macros"]
+default = ["macros", "futures-mailbox"]
 macros = ["dep:ludi-macros"]
+futures-mailbox = ["ludi-core/futures-mailbox"]
 
 [dependencies]
 ludi-core = { path = "../ludi-core" }
 ludi-macros = { path = "../ludi-macros", optional = true }
 
+futures-util = { version = "0.3", features = ["sink"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-
-[[example]]
-name = "simple"
-required-features = ["macros"]

@@ -1,3 +1,5 @@
+#![doc = include_str!("../../README.md")]
+
 pub use ludi_core::*;
 #[cfg(feature = "macros")]
 pub use ludi_macros::*;
