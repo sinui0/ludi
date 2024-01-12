@@ -23,6 +23,10 @@ name = "message_enum"
 path = "tests/message_enum.rs"
 
 [[test]]
+name = "wrap"
+path = "tests/wrap.rs"
+
+[[test]]
 name = "interface_basic"
 path = "tests/interface_basic.rs"
 

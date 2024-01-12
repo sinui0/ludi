@@ -203,7 +203,7 @@ impl Default for ErrorStrategy {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NestedAttrs(Vec<darling::ast::NestedMeta>);
 
 impl NestedAttrs {

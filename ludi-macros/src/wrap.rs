@@ -8,6 +8,8 @@ use quote::{quote, ToTokens};
 use proc_macro2::TokenStream;
 use syn::{DeriveInput, parse_quote};
 
+use crate::options::NestedAttrs;
+
 pub(crate) fn impl_wrap(input: DeriveInput) -> TokenStream {
     let wrap = match Wrap::from_derive_input(&input) {
         Ok(msg) => msg,
@@ -27,6 +29,7 @@ pub(crate) struct Wrap {
     data: Data<Variant, darling::util::Ignored>,
     #[darling(skip)]
     variants: Vec<Variant>,
+    return_attrs: Option<NestedAttrs>,
 }
 
 impl Wrap {
@@ -88,6 +91,7 @@ impl ToTokens for Wrap {
             vis,
             generics,
             variants,
+            return_attrs,
             ..
         } = self;
 
@@ -113,12 +117,15 @@ impl ToTokens for Wrap {
                 (idents, tys)
             },
         );
+
+        let return_attrs = return_attrs.clone().unwrap_or_default().to_vec();
     
         tokens.extend(quote!(
             impl #impl_generics ::ludi::Message for #ident #ty_generics #where_clause {
                 type Return = #return_ident #ty_generics;
             }
     
+            #( #[#return_attrs] )*
             #vis enum #return_ident #ty_generics #where_clause {
                 #(
                     #variant_idents ( <#variant_tys as ::ludi::Message>::Return ),
