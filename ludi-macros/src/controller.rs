@@ -47,13 +47,18 @@ pub(crate) fn impl_controller(input: syn::DeriveInput) -> proc_macro2::TokenStre
         quote!(addr, _pd: std::marker::PhantomData)
     };
 
+    let ctrl_doc = format!("[`{}`] controller.", actor_ident.to_string());
+    let ctrl_fn_doc = format!("Create a new [`{}`] controller.", actor_ident.to_string());
+
     quote!(
         #[derive(Debug, Clone)]
+        #[doc = #ctrl_doc]
         #vis struct #ctrl_ident #ty_generics {
             #fields
         }
 
         impl #actor_impl_generics #actor_ident #actor_ty_generics #actor_where_clause {
+            #[doc = #ctrl_fn_doc]
             pub fn controller<A>(addr: A) -> #ctrl_ident #ty_generics
             where
                 A: ::ludi::Address,
