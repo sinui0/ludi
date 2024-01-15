@@ -79,21 +79,6 @@ pub trait Dispatch<A: Actor>: Message {
 ///
 /// When an actor receives a stop signal it will stop processing messages and the [`Actor::stopped`] method
 /// will be called before returning.
-///
-/// # Example
-///
-/// ```ignore
-/// # use ludi_core::*;
-/// struct PingActor;
-///
-/// impl Actor for PingActor {
-///     type Stop = ();
-///
-///     async fn stopped(&mut self) -> Self::Stop {
-///        println!("actor stopped");
-///     }
-/// }
-/// ```
 pub trait Actor: Send + Sized + 'static {
     /// The type of value returned when this actor is stopped.
     type Stop;
