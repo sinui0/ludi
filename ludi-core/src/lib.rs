@@ -7,37 +7,41 @@
 #![deny(clippy::all)]
 
 mod address;
+mod channel;
 mod envelope;
 mod error;
+pub mod futures;
 mod mailbox;
 
+use futures_core::Stream;
 use futures_util::StreamExt;
 use std::future::Future;
 
 pub use address::Address;
+pub use channel::ResponseSender;
 pub use envelope::Envelope;
-pub use error::MessageError;
-pub use mailbox::{IntoMail, IntoMailbox, Mailbox};
+pub use error::Error;
+pub use mailbox::{mailbox, unbounded_mailbox, IntoMail, IntoMailbox, Mailbox};
 
-#[cfg(feature = "futures-mailbox")]
-pub use address::futures_address::FuturesAddress;
-#[cfg(feature = "futures-mailbox")]
-pub use mailbox::futures_mailbox::{mailbox, FuturesMailbox};
+// #[cfg(feature = "futures-mailbox")]
+// pub use address::futures_address::FuturesAddress;
+// #[cfg(feature = "futures-mailbox")]
+// pub use mailbox::futures_mailbox::{mailbox, FuturesMailbox};
 
 /// A message type.
-pub trait Message: Send + 'static {
+pub trait Message: Send + Unpin + 'static {
     /// The return value of the message.
-    type Return: Send + 'static;
+    type Return: Send + Unpin + 'static;
 }
 
 /// A message which can wrap another type of message.
 pub trait Wrap<T: Message>: From<T> + Message {
     /// Unwraps the return value of the message.
-    fn unwrap_return(ret: Self::Return) -> Result<T::Return, MessageError>;
+    fn unwrap_return(ret: Self::Return) -> Result<T::Return, Error>;
 }
 
 impl<T: Message> Wrap<T> for T {
-    fn unwrap_return(ret: Self::Return) -> Result<T::Return, MessageError> {
+    fn unwrap_return(ret: Self::Return) -> Result<T::Return, Error> {
         Ok(ret)
     }
 }
@@ -154,19 +158,6 @@ pub trait Handler<T: Message>: Actor {
     }
 }
 
-/// A controller for an actor.
-pub trait Controller {
-    /// The type of actor that this controller controls.
-    type Actor: Actor;
-    /// The type of address that this controller uses to send messages to the actor.
-    type Address: Address<Message = Self::Message>;
-    /// The type of message that this controller can send to the actor.
-    type Message: Message + Dispatch<Self::Actor>;
-
-    /// Returns the address of the actor.
-    fn address(&self) -> &Self::Address;
-}
-
 /// An actor's execution context.
 pub struct Context<A: Actor> {
     stopped: bool,
@@ -233,11 +224,11 @@ impl<A: Actor> Context<A> {
 ///
 /// * `actor` - The actor to run.
 /// * `mailbox` - The mailbox which will be used to receive messages.
-pub async fn run<A, M>(actor: &mut A, mailbox: &mut M) -> Result<A::Stop, A::Error>
+pub async fn run<A, M, T>(actor: &mut A, mailbox: &mut M) -> Result<A::Stop, A::Error>
 where
     A: Actor,
-    M: Mailbox,
-    M::Message: Dispatch<A>,
+    M: Stream<Item = Envelope<T>> + Unpin,
+    T: Dispatch<A>,
 {
     let mut ctx = Context::default();
     actor.started(&mut ctx)?;

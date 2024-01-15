@@ -1,130 +1,90 @@
-use std::future::Future;
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures_util::Sink;
 
-use crate::{Envelope, Message, MessageError, Wrap};
+use crate::{
+    channel::Sender,
+    futures::{MessageFuture, QueueFuture, Wait},
+    Envelope, Error, Message, Wrap,
+};
 
-/// An address of a mailbox.
-///
-/// An address is used to send messages to a mailbox, which can be dispatched to an actor.
-pub trait Address:
-    Sink<Envelope<Self::Message, <Self::Message as Message>::Return>, Error = MessageError>
-    + Send
-    + 'static
-{
-    /// The type of message that can be sent to this address.
-    type Message: Message;
-
-    /// Sends a message and awaits a response.
-    fn send_await<T>(&self, msg: T) -> impl Future<Output = Result<T::Return, MessageError>> + Send
-    where
-        Self::Message: Wrap<T>,
-        T: Message;
-
-    /// Sends a message.
-    fn send<T>(&self, msg: T) -> impl Future<Output = Result<(), MessageError>> + Send
-    where
-        Self::Message: Wrap<T>,
-        T: Message;
+/// An address which can be used to send messages to a mailbox.
+#[derive(Debug)]
+pub struct Address<T: Message> {
+    sender: Sender<T>,
 }
 
-#[cfg(feature = "futures-mailbox")]
-pub(crate) mod futures_address {
-    use super::*;
-    use futures_channel::mpsc;
-    use futures_util::SinkExt;
-    use std::{pin::Pin, task::Poll};
-
-    /// A MPSC address implemented using channels from the [`futures_channel`](https://crates.io/crates/futures_channel) crate.
-    pub struct FuturesAddress<T: Message> {
-        pub(crate) send: mpsc::Sender<Envelope<T, T::Return>>,
+impl<T: Message> Address<T> {
+    pub(crate) fn new(sender: Sender<T>) -> Self {
+        Self { sender }
     }
 
-    impl<T: Message> Clone for FuturesAddress<T> {
-        fn clone(&self) -> Self {
-            Self {
-                send: self.send.clone(),
-            }
-        }
+    /// Closes the mailbox with this address.
+    pub fn close(&mut self) {
+        self.sender.close();
     }
 
-    impl<T> Sink<Envelope<T, T::Return>> for FuturesAddress<T>
+    /// Returns whether the mailbox is connected.
+    pub fn is_connected(&self) -> bool {
+        self.sender.is_closed()
+    }
+
+    /// Sends a message and waits for a response.
+    pub async fn send<U>(&self, msg: U) -> Result<U::Return, Error>
     where
-        T: Message,
+        T: Wrap<U>,
+        U: Message,
     {
-        type Error = MessageError;
-
-        fn poll_ready(
-            mut self: Pin<&mut Self>,
-            cx: &mut std::task::Context<'_>,
-        ) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.send)
-                .poll_ready(cx)
-                .map_err(|_| MessageError::Closed)
-        }
-
-        fn start_send(
-            mut self: Pin<&mut Self>,
-            item: Envelope<T, T::Return>,
-        ) -> Result<(), Self::Error> {
-            Pin::new(&mut self.send)
-                .start_send(item)
-                .map_err(|_| MessageError::Closed)
-        }
-
-        fn poll_flush(
-            mut self: Pin<&mut Self>,
-            cx: &mut std::task::Context<'_>,
-        ) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.send)
-                .poll_flush(cx)
-                .map_err(|_| MessageError::Closed)
-        }
-
-        fn poll_close(
-            mut self: Pin<&mut Self>,
-            cx: &mut std::task::Context<'_>,
-        ) -> Poll<Result<(), Self::Error>> {
-            Pin::new(&mut self.send)
-                .poll_close(cx)
-                .map_err(|_| MessageError::Closed)
-        }
+        T::unwrap_return(self.wait(msg.into()).await?)
     }
 
-    impl<T> Address for FuturesAddress<T>
-    where
-        T: Message,
-    {
-        type Message = T;
+    /// Returns a future which resolves immediately when a message is queued.
+    pub fn queue(&self, msg: T) -> QueueFuture<T> {
+        QueueFuture::new(self.sender.clone(), Envelope::new(msg))
+    }
 
-        async fn send_await<U>(&self, msg: U) -> Result<U::Return, MessageError>
-        where
-            Self::Message: Wrap<U>,
-            U: Message,
-        {
-            let (env, ret) = Envelope::new_returning(msg.into());
+    /// Returns a future which will send a message and wait for a response.
+    pub fn wait(&self, msg: T) -> MessageFuture<T, Wait> {
+        let (envelope, response) = Envelope::new_with_response(msg);
+        MessageFuture::new(QueueFuture::new(self.sender.clone(), envelope), response)
+    }
+}
 
-            self.send
-                .clone()
-                .send(env)
-                .await
-                .map_err(|_| MessageError::Closed)?;
-
-            let ret = ret.await.map_err(|_| MessageError::Interrupted)?;
-
-            Self::Message::unwrap_return(ret)
+impl<T: Message> Clone for Address<T> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
         }
+    }
+}
 
-        async fn send<U>(&self, msg: U) -> Result<(), MessageError>
-        where
-            Self::Message: Wrap<U>,
-            U: Message,
-        {
-            self.send
-                .clone()
-                .send(Envelope::new(msg.into()))
-                .await
-                .map_err(|_| MessageError::Closed)
-        }
+impl<T: Message> Sink<Envelope<T>> for Address<T> {
+    type Error = Error;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.get_mut().sender)
+            .poll_ready(cx)
+            .map_err(|_| Error::Disconnected)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: Envelope<T>) -> Result<(), Self::Error> {
+        Pin::new(&mut self.get_mut().sender)
+            .start_send(item)
+            .map_err(|_| Error::Disconnected)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.get_mut().sender)
+            .poll_flush(cx)
+            .map_err(|_| Error::Disconnected)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Pin::new(&mut self.get_mut().sender)
+            .poll_close(cx)
+            .map_err(|_| Error::Disconnected)
     }
 }

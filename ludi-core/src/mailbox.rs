@@ -1,48 +1,55 @@
-use std::{pin::Pin, task::Poll};
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use futures_core::Stream;
+use futures_util::StreamExt;
 
-use crate::{Envelope, Message};
+use crate::{
+    channel::{new_channel, new_unbounded_channel, Receiver},
+    Address, Envelope, Message,
+};
 
-/// A mailbox.
-///
-/// A mailbox is an asynchronous stream of messages which can be dispatched to an actor. The counter-part
-/// to a mailbox is an [`Address`](crate::Address), which is used to send messages.
-pub trait Mailbox:
-    Stream<Item = Envelope<Self::Message, <Self::Message as Message>::Return>> + Send + Unpin + 'static
-{
-    /// The type of message that can be sent to this mailbox.
-    type Message: Message;
+/// Returns a new mailbox and address.
+pub fn mailbox<T: Message>(capacity: usize) -> (Mailbox<T>, Address<T>) {
+    let (sender, recv) = new_channel(capacity);
+
+    (Mailbox { recv }, Address::new(sender))
 }
 
-impl<T, U> Mailbox for T
-where
-    T: Stream<Item = Envelope<U, <U as Message>::Return>> + Send + Unpin + 'static,
-    U: Message,
-{
-    type Message = U;
+/// Returns a new unbounded mailbox and address.
+pub fn unbounded_mailbox<T: Message>() -> (Mailbox<T>, Address<T>) {
+    let (sender, recv) = new_unbounded_channel();
+
+    (Mailbox { recv }, Address::new(sender))
+}
+
+/// A mailbox.
+pub struct Mailbox<T: Message> {
+    recv: Receiver<T>,
+}
+
+impl<T: Message> Stream for Mailbox<T> {
+    type Item = Envelope<T>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.recv.poll_next_unpin(cx)
+    }
 }
 
 /// An extension trait which converts a stream of messages into a mailbox.
-pub trait IntoMailbox {
-    /// The type of message that can be sent to the mailbox.
-    type Message: Message;
-    /// The type of mailbox.
-    type IntoMail: Mailbox<Message = Self::Message>;
-
+pub trait IntoMailbox: Sized {
     /// Convert self into a mailbox.
-    fn into_mailbox(self) -> Self::IntoMail;
+    fn into_mailbox(self) -> IntoMail<Self>;
 }
 
 impl<T> IntoMailbox for T
 where
-    T: Stream + Send + Unpin + 'static,
+    T: Stream + Unpin,
     T::Item: Message,
 {
-    type Message = T::Item;
-    type IntoMail = IntoMail<T>;
-
-    fn into_mailbox(self) -> Self::IntoMail {
+    fn into_mailbox(self) -> IntoMail<Self> {
         IntoMail(self)
     }
 }
@@ -71,63 +78,15 @@ impl<T> IntoMail<T> {
 
 impl<T> Stream for IntoMail<T>
 where
-    T: Stream + Send + Unpin + 'static,
+    T: Stream + Unpin,
     T::Item: Message,
 {
-    type Item = Envelope<T::Item, <T::Item as Message>::Return>;
+    type Item = Envelope<T::Item>;
 
     fn poll_next(
         self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         Stream::poll_next(Pin::new(&mut self.get_mut().0), cx).map(|m| m.map(|m| Envelope::new(m)))
-    }
-}
-
-#[cfg(feature = "futures-mailbox")]
-pub(crate) mod futures_mailbox {
-    use super::*;
-    use crate::FuturesAddress;
-    use futures_channel::mpsc;
-
-    /// Returns a new mailbox and its' address.
-    ///
-    /// # Arguments
-    ///
-    /// * `capacity` - The number of messages that can be buffered in the mailbox.
-    pub fn mailbox<T>(capacity: usize) -> (FuturesMailbox<T>, FuturesAddress<T>)
-    where
-        T: Message,
-    {
-        FuturesMailbox::new(capacity)
-    }
-
-    /// A MPSC mailbox implemented using channels from the [`futures_channel`](https://crates.io/crates/futures_channel) crate.
-    pub struct FuturesMailbox<T: Message> {
-        recv: mpsc::Receiver<Envelope<T, T::Return>>,
-    }
-
-    impl<T: Message> FuturesMailbox<T> {
-        /// Create a new mailbox, returning the mailbox and its' address.
-        ///
-        /// # Arguments
-        ///
-        /// * `buffer` - The number of messages that can be buffered in the mailbox.
-        pub fn new(buffer: usize) -> (Self, FuturesAddress<T>) {
-            let (send, recv) = mpsc::channel(buffer);
-
-            (Self { recv }, FuturesAddress { send })
-        }
-    }
-
-    impl<T: Message> Stream for FuturesMailbox<T> {
-        type Item = Envelope<T, T::Return>;
-
-        fn poll_next(
-            mut self: Pin<&mut Self>,
-            cx: &mut std::task::Context<'_>,
-        ) -> Poll<Option<Self::Item>> {
-            Pin::new(&mut self.recv).poll_next(cx)
-        }
     }
 }
