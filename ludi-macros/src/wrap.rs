@@ -142,10 +142,10 @@ impl ToTokens for Wrap {
     
             #(
                 impl #impl_generics ::ludi::Wrap<#variant_tys> for #ident #ty_generics #where_clause {
-                    fn unwrap_return(ret: Self::Return) -> Result<<#variant_tys as ::ludi::Message>::Return, ::ludi::MessageError> {
+                    fn unwrap_return(ret: Self::Return) -> Result<<#variant_tys as ::ludi::Message>::Return, ::ludi::Error> {
                         match ret {
                             Self::Return :: #variant_idents (value) => Ok(value),
-                            _ => Err(::ludi::MessageError::Wrapper),
+                            _ => Err(::ludi::Error::Wrapper),
                         }
                     }
                 }

@@ -405,10 +405,7 @@ impl Method {
             #(#doc_attrs)*
             #(#[#attrs])*
             #vis #ctrl_sig {
-                ::ludi::Address::send_await(
-                    ::ludi::Controller::address(self),
-                    #struct_arg
-                ).await #err_handler
+                self.addr.send(#struct_arg).await #err_handler
             }
         )
     }

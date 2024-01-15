@@ -49,3 +49,7 @@ path = "tests/implement_async_trait.rs"
 [[test]]
 name = "implement_trait_foreign"
 path = "tests/implement_trait_foreign.rs"
+
+[[test]]
+name = "controller"
+path = "tests/controller.rs"

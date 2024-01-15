@@ -1,56 +1,60 @@
-use futures_channel::oneshot::{channel, Receiver, Sender};
+use crate::{channel::ResponseSender, futures::ResponseFuture, Actor, Context, Dispatch, Message};
 
-use crate::{Actor, Context, Dispatch, Message};
-
-/// An envelope containing a message and optionally a channel which can be
-/// used to return a value back to the sender.
-pub struct Envelope<M, R> {
-    msg: M,
-    send: Option<Sender<R>>,
+#[derive(Debug)]
+pub(crate) enum EnvelopeInner<T: Message> {
+    /// A message which does not expect a response.
+    NoResponse(T),
+    /// A message which expects a response.
+    WantsResponse(T, ResponseSender<T>),
 }
 
-impl<M, R> Envelope<M, R> {
+/// An envelope containing a message and optionally a channel which can be
+/// used to return a response back to the sender.
+#[derive(Debug)]
+pub struct Envelope<T: Message>(EnvelopeInner<T>);
+
+impl<T: Message> Envelope<T> {
     /// Create a new envelope.
-    pub fn new(msg: M) -> Self {
-        Self { msg, send: None }
+    pub fn new(msg: T) -> Self {
+        Self(EnvelopeInner::NoResponse(msg))
     }
 
     /// Create a new envelope with a channel which can be used to return
     /// a response to the sender.
-    pub fn new_returning(msg: M) -> (Self, Receiver<R>) {
-        let (send, recv) = channel();
-        (
-            Self {
-                msg,
-                send: Some(send),
-            },
-            recv,
-        )
+    pub fn new_with_response(msg: T) -> (Self, ResponseFuture<T>) {
+        let (send, recv) = ResponseFuture::new();
+        (Self(EnvelopeInner::WantsResponse(msg, send)), recv)
     }
-}
 
-impl<M, R> Envelope<M, R>
-where
-    M: Message<Return = R>,
-    R: Send,
-{
+    /// Returns `true` if the envelope has a channel which will receive a response.
+    pub fn wants_response(&self) -> bool {
+        match &self.0 {
+            EnvelopeInner::NoResponse(_) => false,
+            EnvelopeInner::WantsResponse(_, _) => true,
+        }
+    }
+
     /// Dispatches the message and return channel to the actor for handling.
     ///
     /// # Arguments
     ///
     /// * `actor` - The actor which will handle the message.
     /// * `ctx` - The context of the actor.
-    pub async fn dispatch<A>(mut self, actor: &mut A, ctx: &mut Context<A>)
+    pub async fn dispatch<A>(self, actor: &mut A, ctx: &mut Context<A>)
     where
         A: Actor,
-        M: Dispatch<A>,
+        T: Dispatch<A>,
     {
-        self.msg
-            .dispatch(actor, ctx, move |ret| {
-                if let Some(send) = self.send.take() {
-                    let _ = send.send(ret);
-                }
-            })
-            .await
+        match self.0 {
+            EnvelopeInner::NoResponse(msg) => {
+                msg.dispatch(actor, ctx, move |_| {}).await;
+            }
+            EnvelopeInner::WantsResponse(msg, sender) => {
+                msg.dispatch(actor, ctx, move |ret| {
+                    let _ = sender.send(ret);
+                })
+                .await;
+            }
+        }
     }
 }

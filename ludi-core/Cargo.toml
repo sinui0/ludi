@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["futures-mailbox"]
-futures-mailbox = []
+default = []
 
 [dependencies]
 futures-core = { version = "0.3" }

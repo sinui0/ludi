@@ -4,9 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["macros", "futures-mailbox"]
+default = ["macros"]
 macros = ["dep:ludi-macros"]
-futures-mailbox = ["ludi-core/futures-mailbox"]
 
 [dependencies]
 ludi-core = { path = "../ludi-core" }

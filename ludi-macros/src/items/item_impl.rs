@@ -237,31 +237,28 @@ impl ItemImpl {
 
         if let Some(generic_args) = &self.actor_generic_args {
             let mut generic_args = generic_args.clone();
-            generic_args.args.push(parse_quote!(A));
+            generic_args.args.push(parse_quote!(CtrlMsg));
             ctrl_path.segments.last_mut().unwrap().arguments =
                 syn::PathArguments::AngleBracketed(generic_args);
         } else {
             ctrl_path.segments.last_mut().unwrap().arguments =
-                syn::PathArguments::AngleBracketed(parse_quote!(<A,>));
+                syn::PathArguments::AngleBracketed(parse_quote!(<CtrlMsg,>));
         }
 
         let mut generics = self.impl_generics.clone();
-        generics.params.push(parse_quote!(A));
+        generics.params.push(parse_quote!(CtrlMsg));
 
         let where_clause = generics.make_where_clause();
         where_clause
             .predicates
-            .push(parse_quote!(A: Send + Sync + 'static));
-        where_clause
-            .predicates
-            .push(parse_quote!(Self: ::ludi::Controller<Actor = #actor_path>));
+            .push(parse_quote!(CtrlMsg: ::ludi::Message + ludi::Dispatch<#actor_path>));
 
         if let Some(ImplTrait { trait_path, .. }) = &self.impl_trait {
             self.methods.iter().for_each(|method| {
                 let struct_path = &method.struct_path;
-                where_clause.predicates.push(
-                    parse_quote!(<Self as ::ludi::Controller>::Message: ::ludi::Wrap<#struct_path>),
-                );
+                where_clause
+                    .predicates
+                    .push(parse_quote!(CtrlMsg: ::ludi::Wrap<#struct_path>));
             });
 
             let methods = self.methods.iter().map(|method| method.expand_ctrl(true));
@@ -279,9 +276,9 @@ impl ItemImpl {
                 let mut generics = generics.clone();
 
                 let where_clause = generics.make_where_clause();
-                where_clause.predicates.push(
-                    parse_quote!(<Self as ::ludi::Controller>::Message: ::ludi::Wrap<#struct_path>),
-                );
+                where_clause
+                    .predicates
+                    .push(parse_quote!(CtrlMsg: ::ludi::Wrap<#struct_path>));
                 let (impl_generics, _, where_clause) = generics.split_for_impl();
 
                 quote!(

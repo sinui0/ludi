@@ -8,13 +8,14 @@ ludi is mostly a collection of traits which compose together to resemble an acto
 
 Check out this blog post on [tokio actors](https://ryhl.io/blog/actors-with-tokio/) which serves as a nice introduction to this paradigm.
 
-A pitfall of message-based synchronization, in this author's view, is the boilerplate that comes with it. To address this, ludi comes with (optional) macros which can be used to generate APIs which encapsulate the implementation details of message passing, and instead provide more ergonomic OOP-style interfaces (traits, methods). This approach was inspired by [`spaad`](https://github.com/Restioson/spaad), a crate built on [`xtra`](https://github.com/Restioson/xtra).
+A pitfall of message-based synchronization, in this author's view, is the boilerplate that comes with it. To address this, ludi comes with (optional) macros which can be used to generate APIs which encapsulate the implementation details of message passing, and instead provide more ergonomic OOP-style interfaces (traits, methods).
+
+This project was inspired by [`xtra`](https://github.com/Restioson/xtra), and [`spaad`](https://github.com/Restioson/spaad) an extension crate built on it.
 
 ## Features
 
 - Small
-    - Contains very little implementation code, mostly traits and helpers.
-    - The "batteries" that are included are feature gated, eg `futures-mailbox`.
+    - Contains very little implementation code.
 - Ergonomic
     - Generate APIs which resemble lock-based interfaces.
 - Safe
@@ -89,7 +90,7 @@ impl Counter for CounterBoi {
 #[tokio::main]
 async fn main() {
     // Create a mailbox and address for sending `CounterMsg` messages.
-    let (mut mailbox, addr) = ludi::FuturesMailbox::<CounterMsg>::new(100);
+    let (mut mailbox, addr) = ludi::mailbox::<CounterMsg>(8);
 
     // Create a new actor.
     let mut actor = CounterBoi::default();

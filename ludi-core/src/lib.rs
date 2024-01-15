@@ -7,37 +7,36 @@
 #![deny(clippy::all)]
 
 mod address;
+mod channel;
 mod envelope;
 mod error;
+pub mod futures;
 mod mailbox;
 
+use futures_core::Stream;
 use futures_util::StreamExt;
 use std::future::Future;
 
 pub use address::Address;
+pub use channel::ResponseSender;
 pub use envelope::Envelope;
-pub use error::MessageError;
-pub use mailbox::{IntoMail, IntoMailbox, Mailbox};
-
-#[cfg(feature = "futures-mailbox")]
-pub use address::futures_address::FuturesAddress;
-#[cfg(feature = "futures-mailbox")]
-pub use mailbox::futures_mailbox::{mailbox, FuturesMailbox};
+pub use error::Error;
+pub use mailbox::{mailbox, unbounded_mailbox, IntoMail, IntoMailbox, Mailbox};
 
 /// A message type.
-pub trait Message: Send + 'static {
+pub trait Message: Send + Unpin + 'static {
     /// The return value of the message.
-    type Return: Send + 'static;
+    type Return: Send + Unpin + 'static;
 }
 
 /// A message which can wrap another type of message.
 pub trait Wrap<T: Message>: From<T> + Message {
     /// Unwraps the return value of the message.
-    fn unwrap_return(ret: Self::Return) -> Result<T::Return, MessageError>;
+    fn unwrap_return(ret: Self::Return) -> Result<T::Return, Error>;
 }
 
 impl<T: Message> Wrap<T> for T {
-    fn unwrap_return(ret: Self::Return) -> Result<T::Return, MessageError> {
+    fn unwrap_return(ret: Self::Return) -> Result<T::Return, Error> {
         Ok(ret)
     }
 }
@@ -61,11 +60,6 @@ pub trait Dispatch<A: Actor>: Message {
 
 /// An actor.
 ///
-/// # Message Type
-///
-/// Each actor must specify the type of message it can handle. See the [`Message`] trait for
-/// more information and examples.
-///
 /// # Start
 ///
 /// When an actor is first started, the [`Actor::started`] method will be called. By default this method
@@ -75,22 +69,7 @@ pub trait Dispatch<A: Actor>: Message {
 ///
 /// When an actor receives a stop signal it will stop processing messages and the [`Actor::stopped`] method
 /// will be called before returning.
-///
-/// # Example
-///
-/// ```ignore
-/// # use ludi_core::*;
-/// struct PingActor;
-///
-/// impl Actor for PingActor {
-///     type Stop = ();
-///
-///     async fn stopped(&mut self) -> Self::Stop {
-///        println!("actor stopped");
-///     }
-/// }
-/// ```
-pub trait Actor: Send + Sized + 'static {
+pub trait Actor: Send + Sized {
     /// The type of value returned when this actor is stopped.
     type Stop;
     /// The type of error which may occur during handling.
@@ -152,19 +131,6 @@ pub trait Handler<T: Message>: Actor {
     ) -> impl Future<Output = ()> + Send {
         async move { ret(self.handle(msg, ctx).await) }
     }
-}
-
-/// A controller for an actor.
-pub trait Controller {
-    /// The type of actor that this controller controls.
-    type Actor: Actor;
-    /// The type of address that this controller uses to send messages to the actor.
-    type Address: Address<Message = Self::Message>;
-    /// The type of message that this controller can send to the actor.
-    type Message: Message + Dispatch<Self::Actor>;
-
-    /// Returns the address of the actor.
-    fn address(&self) -> &Self::Address;
 }
 
 /// An actor's execution context.
@@ -233,11 +199,11 @@ impl<A: Actor> Context<A> {
 ///
 /// * `actor` - The actor to run.
 /// * `mailbox` - The mailbox which will be used to receive messages.
-pub async fn run<A, M>(actor: &mut A, mailbox: &mut M) -> Result<A::Stop, A::Error>
+pub async fn run<A, M, T>(actor: &mut A, mailbox: &mut M) -> Result<A::Stop, A::Error>
 where
     A: Actor,
-    M: Mailbox,
-    M::Message: Dispatch<A>,
+    M: Stream<Item = Envelope<T>> + Unpin,
+    T: Dispatch<A>,
 {
     let mut ctx = Context::default();
     actor.started(&mut ctx)?;

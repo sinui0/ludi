@@ -23,22 +23,19 @@ pub(crate) fn impl_controller(input: syn::DeriveInput) -> proc_macro2::TokenStre
         input.generics.split_for_impl();
 
     let mut generics = input.generics.clone();
-    generics.params.push(syn::parse_quote!(A));
+    generics.params.push(syn::parse_quote!(CtrlMsg));
 
     let where_clause = generics.make_where_clause();
     where_clause
         .predicates
-        .push(syn::parse_quote!(A: ::ludi::Address));
-    where_clause
-        .predicates
-        .push(syn::parse_quote!(<A as ::ludi::Address>::Message: ::ludi::Dispatch<#actor_ident #actor_ty_generics>));
+        .push(syn::parse_quote!(CtrlMsg: ::ludi::Message));
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     let fields = if input.generics.params.is_empty() {
-        quote!(addr: A)
+        quote!(addr: ludi::Address<CtrlMsg>)
     } else {
-        quote!(addr: A, _pd: std::marker::PhantomData #actor_ty_generics)
+        quote!(addr: ludi::Address<CtrlMsg>, _pd: std::marker::PhantomData #actor_ty_generics)
     };
 
     let from_fields = if input.generics.params.is_empty() {
@@ -53,38 +50,26 @@ pub(crate) fn impl_controller(input: syn::DeriveInput) -> proc_macro2::TokenStre
     quote!(
         #[derive(Debug, Clone)]
         #[doc = #ctrl_doc]
-        #vis struct #ctrl_ident #ty_generics {
+        #vis struct #ctrl_ident #ty_generics where CtrlMsg: ::ludi::Message {
             #fields
         }
 
         impl #actor_impl_generics #actor_ident #actor_ty_generics #actor_where_clause {
             #[doc = #ctrl_fn_doc]
-            pub fn controller<A>(addr: A) -> #ctrl_ident #ty_generics
+            pub fn controller<CtrlMsg>(addr: ::ludi::Address<CtrlMsg>) -> #ctrl_ident #ty_generics
             where
-                A: ::ludi::Address,
-                <A as ::ludi::Address>::Message: ::ludi::Dispatch<Self>,
+                CtrlMsg: ::ludi::Message + ::ludi::Dispatch<Self>,
             {
                 #ctrl_ident ::from(addr)
             }
         }
 
-        impl #impl_generics From<A> for #ctrl_ident #ty_generics #actor_where_clause
+        impl #impl_generics From<::ludi::Address<CtrlMsg>> for #ctrl_ident #ty_generics #where_clause
         {
-            fn from(addr: A) -> Self {
+            fn from(addr: ludi::Address<CtrlMsg>) -> Self {
                 Self {
                     #from_fields
                 }
-            }
-        }
-
-        impl #ty_generics ::ludi::Controller for #ctrl_ident #ty_generics #where_clause
-        {
-            type Actor = #actor_ident #actor_ty_generics;
-            type Address = A;
-            type Message = <A as ::ludi::Address>::Message;
-
-            fn address(&self) -> &Self::Address {
-                &self.addr
             }
         }
     )
