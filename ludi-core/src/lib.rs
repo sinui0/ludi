@@ -23,11 +23,6 @@ pub use envelope::Envelope;
 pub use error::Error;
 pub use mailbox::{mailbox, unbounded_mailbox, IntoMail, IntoMailbox, Mailbox};
 
-// #[cfg(feature = "futures-mailbox")]
-// pub use address::futures_address::FuturesAddress;
-// #[cfg(feature = "futures-mailbox")]
-// pub use mailbox::futures_mailbox::{mailbox, FuturesMailbox};
-
 /// A message type.
 pub trait Message: Send + Unpin + 'static {
     /// The return value of the message.
