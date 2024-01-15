@@ -89,7 +89,7 @@ impl Counter for CounterBoi {
 #[tokio::main]
 async fn main() {
     // Create a mailbox and address for sending `CounterMsg` messages.
-    let (mut mailbox, addr) = ludi::FuturesMailbox::<CounterMsg>::new(100);
+    let (mut mailbox, addr) = ludi::mailbox::<CounterMsg>(8);
 
     // Create a new actor.
     let mut actor = CounterBoi::default();
