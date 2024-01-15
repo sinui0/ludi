@@ -74,7 +74,7 @@ pub trait Dispatch<A: Actor>: Message {
 ///
 /// When an actor receives a stop signal it will stop processing messages and the [`Actor::stopped`] method
 /// will be called before returning.
-pub trait Actor: Send + Sized + 'static {
+pub trait Actor: Send + Sized {
     /// The type of value returned when this actor is stopped.
     type Stop;
     /// The type of error which may occur during handling.
