@@ -65,11 +65,6 @@ pub trait Dispatch<A: Actor>: Message {
 
 /// An actor.
 ///
-/// # Message Type
-///
-/// Each actor must specify the type of message it can handle. See the [`Message`] trait for
-/// more information and examples.
-///
 /// # Start
 ///
 /// When an actor is first started, the [`Actor::started`] method will be called. By default this method
