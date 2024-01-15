@@ -15,8 +15,10 @@ use crate::{
 };
 
 /// A [`MessageFuture`] mode which will wait for a response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Wait;
 /// A [`MessageFuture`] mode which will return a [`ResponseFuture`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Detach;
 
 /// A future which sends a message and optionally waits for a response depending on the mode.

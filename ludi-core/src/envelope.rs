@@ -1,5 +1,6 @@
 use crate::{channel::ResponseSender, futures::ResponseFuture, Actor, Context, Dispatch, Message};
 
+#[derive(Debug)]
 pub(crate) enum EnvelopeInner<T: Message> {
     /// A message which does not expect a response.
     NoResponse(T),
@@ -9,6 +10,7 @@ pub(crate) enum EnvelopeInner<T: Message> {
 
 /// An envelope containing a message and optionally a channel which can be
 /// used to return a response back to the sender.
+#[derive(Debug)]
 pub struct Envelope<T: Message>(EnvelopeInner<T>);
 
 impl<T: Message> Envelope<T> {

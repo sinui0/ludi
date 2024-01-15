@@ -25,6 +25,15 @@ pub(crate) fn new_response<T: Message>() -> (ResponseSender<T>, ResponseFuture<T
 /// A channel for sending a response to a message.
 pub struct ResponseSender<T: Message>(OneshotSender<T::Return>);
 
+impl<T> std::fmt::Debug for ResponseSender<T>
+where
+    T: Message + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ResponseSender").field(&self.0).finish()
+    }
+}
+
 impl<T: Message> ResponseSender<T> {
     /// Sends the response.
     pub fn send(self, msg: T::Return) {
